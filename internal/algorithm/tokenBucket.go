@@ -1,7 +1,6 @@
 package algorithm
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -55,11 +54,8 @@ func (t *TokenBucket) Allow() bool {
 	// attempt a request
 	if t.CurrentTokens >= 1 {
 		t.CurrentTokens -= 1
-		fmt.Print("request allowed")
-
 		return true
 	} else {
-		fmt.Print("request denied")
 		return false
 	}
 
