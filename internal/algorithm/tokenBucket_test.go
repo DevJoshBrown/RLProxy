@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+var requestCount = 0
+
 func TestTokenBucket_BlockOnce(t *testing.T) {
 
 	tb := NewTokenBucket(1.0, 0.0, 0.0)
@@ -94,5 +96,33 @@ func TestTokenBucket_fiveThenFail(t *testing.T) {
 	}
 	if allowedReqs != 5 {
 		t.Errorf("expected 5 requests, got: %d", allowedReqs)
+	}
+}
+
+func TestTokenBucket_ConcurrentTenCapFive(t *testing.T) {
+
+	tb := NewTokenBucket(5.0, 0.0, 5.0)
+	ch := make(chan bool)
+	iterations := 10
+	trueCount := 0
+	falseCount := 0
+
+	for i := 0; i < iterations; i++ {
+		go func() {
+			ch <- tb.Allow()
+		}()
+	}
+
+	for i := 0; i < iterations; i++ {
+		result := <-ch
+		if result == true {
+			trueCount++
+		} else {
+			falseCount++
+		}
+	}
+
+	if (trueCount != 5) || (falseCount != 5) {
+		t.Errorf("expected 5 true and 5 false, got: %v true and %v false", trueCount, falseCount)
 	}
 }

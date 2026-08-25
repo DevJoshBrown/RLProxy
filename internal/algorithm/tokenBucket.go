@@ -24,6 +24,7 @@ func NewTokenBucket(Capacity float64, RefillRate float64, CurrentTokens float64)
 
 func (t *TokenBucket) Allow() bool {
 
+	// mutex lock to prevent concurrent token spending
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
