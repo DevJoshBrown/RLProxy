@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-var requestCount = 0
-
 func TestTokenBucket_BlockOnce(t *testing.T) {
 
 	tb := NewTokenBucket(1.0, 0.0, 0.0)
