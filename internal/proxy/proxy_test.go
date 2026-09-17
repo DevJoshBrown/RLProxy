@@ -5,33 +5,48 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"testing"
 )
 
-func TestServer(t *testing.T) {
+func TestReverseProxy(t *testing.T) {
 
 	handler := http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprintf(w, "URL Path: %s", r.URL.Path[1:])
+			fmt.Fprintln(w, "test message")
 		})
 
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	resp, err := http.Get(server.URL + "/test")
+	rpURL, err := url.Parse(server.URL)
 	if err != nil {
-		t.Fatalf("Get failed with error: %s", err)
+		t.Fatalf("failed to parse rpURL")
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("Failed to read body with error: %s", err)
-	}
-	defer resp.Body.Close()
+	ReverseProxy := httptest.NewServer(&httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(rpURL)
+		},
+	})
+	defer ReverseProxy.Close()
 
-	bodyString := string(body)
-	if bodyString != "URL Path: test" {
-		t.Errorf("expected 'URL Path: test', got: %s", bodyString)
+	response, err := http.Get(ReverseProxy.URL)
+	if err != nil {
+		t.Fatalf("failed to get response from ReverseProxy.URL")
+	}
+	defer response.Body.Close()
+
+	b, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body")
+	}
+
+	responseString := string(b)
+
+	if responseString != "test message\n" {
+		t.Errorf("response body string mismatch: expected: %q, actual: %q", "test message\n", responseString)
 	}
 
 }
