@@ -22,7 +22,9 @@ func NewTokenBucket(Capacity float64, RefillRate float64, CurrentTokens float64)
 	}
 }
 
-func (t *TokenBucket) Allow() bool {
+const NoRetry = -1 * time.Second
+
+func (t *TokenBucket) Allow() (allowed bool, secsUntilToken time.Duration) {
 
 	// mutex lock to prevent concurrent token spending
 	t.mu.Lock()
@@ -55,9 +57,14 @@ func (t *TokenBucket) Allow() bool {
 	// attempt a request
 	if t.CurrentTokens >= 1 {
 		t.CurrentTokens -= 1
-		return true
+		return true, 0.0
 	} else {
-		return false
+		if t.RefillRate == 0 {
+			return false, NoRetry
+		}
+		durInSecs := (1 - t.CurrentTokens) / t.RefillRate
+		nanoSecs := float64(time.Second) * durInSecs
+		return false, time.Duration(nanoSecs)
 	}
 
 }

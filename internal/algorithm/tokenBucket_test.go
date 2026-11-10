@@ -8,37 +8,49 @@ import (
 func TestTokenBucket_BlockOnce(t *testing.T) {
 
 	tb := NewTokenBucket(1.0, 0.0, 0.0)
-	result := tb.Allow()
-
+	result, retry := tb.Allow()
 	if result != false {
 		t.Errorf("expected: false, got: %t", result)
+	}
+	if retry != NoRetry {
+		t.Errorf("expected: NoRetry, got: %v", retry)
 	}
 }
 
 func TestTokenBucket_AllowOnce(t *testing.T) {
 
 	tb := NewTokenBucket(1.0, 0.0, 1.0)
-	result := tb.Allow()
+	result, retry := tb.Allow()
 
 	if result != true {
 		t.Errorf("expected: true, got: %t", result)
+	}
+	if retry != 0.0 {
+		t.Errorf("expected: 0.0, got %v", retry)
 	}
 }
 
 func TestTokenBucket_AllowOnceThenBlock(t *testing.T) {
 	tb := NewTokenBucket(1.0, 0.0, 1.0)
 	var result bool
+	var retry time.Duration
 	for i := 0; i < 2; i++ {
-		result = tb.Allow()
+		result, retry = tb.Allow()
 
 		if i == 0 {
 			if result != true {
 				t.Errorf("expected true, got: %t", result)
 			}
+			if retry != 0.0 {
+				t.Errorf("expected: 0.0, got %v", retry)
+			}
 		}
 		if i == 1 {
 			if result != false {
 				t.Errorf("expected false, got: %t", result)
+			}
+			if retry != NoRetry {
+				t.Errorf("expected: NoRetry, got: %v", retry)
 			}
 		}
 	}
@@ -49,17 +61,22 @@ func TestTokenBucket_EqualRefill(t *testing.T) {
 	tb := NewTokenBucket(10.0, 1.0, 1.0)
 
 	var result bool
+	var retry time.Duration
 	allowedReqs := 0
 
-	result = tb.Allow()
+	// initial request to set a time of last request
+	result, retry = tb.Allow()
 	allowedReqs += 1
 
 	for i := 0; i < 4; i++ {
 		tb.TimeOfLastRequest = tb.TimeOfLastRequest.Add(time.Second * -1)
-		result = tb.Allow()
+		result, retry = tb.Allow()
 		allowedReqs += 1
 		if result != true {
 			t.Errorf("expected true, got: %t", result)
+		}
+		if retry != 0.0 {
+			t.Errorf("expected 0.0, got %v", retry)
 		}
 	}
 
@@ -73,22 +90,29 @@ func TestTokenBucket_fiveThenFail(t *testing.T) {
 	tb := NewTokenBucket(5.0, 0.5, 3.0)
 
 	var result bool
+	var retry time.Duration
 	allowedReqs := 0
 
-	result = tb.Allow()
+	result, retry = tb.Allow()
 	allowedReqs += 1
 
 	for i := 0; i < 5; i++ {
 		tb.TimeOfLastRequest = tb.TimeOfLastRequest.Add(time.Second * -1)
-		result = tb.Allow()
+		result, retry = tb.Allow()
 		if i < 4 {
 			if result != true {
 				t.Errorf("expected true, got: %t", result)
+			}
+			if retry != 0.0 {
+				t.Errorf("expected 0.0, got %v", retry)
 			}
 			allowedReqs += 1
 		} else {
 			if result != false {
 				t.Errorf("expected false, got: %t", result)
+			}
+			if retry <= 0.0 {
+				t.Errorf("expected a positive retry time, got: %v", retry)
 			}
 		}
 	}
@@ -107,7 +131,8 @@ func TestTokenBucket_ConcurrentTenCapFive(t *testing.T) {
 
 	for i := 0; i < iterations; i++ {
 		go func() {
-			ch <- tb.Allow()
+			result, _ := tb.Allow()
+			ch <- result
 		}()
 	}
 
