@@ -8,6 +8,8 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"testing"
+
+	"github.com/DevJoshBrown/RLProxy/internal/algorithm"
 )
 
 func TestReverseProxy(t *testing.T) {
@@ -47,6 +49,34 @@ func TestReverseProxy(t *testing.T) {
 
 	if responseString != "test message\n" {
 		t.Errorf("response body string mismatch: expected: %q, actual: %q", "test message\n", responseString)
+	}
+
+}
+
+func TestGateHandler_BlockOnce(t *testing.T) {
+
+	serverURL := url.URL{
+		Scheme: "http",
+		Host:   "localhost:0",
+	}
+
+	TB := algorithm.NewTokenBucket(0.0, 0.0, 0.0)
+	RP := NewReverseProxy(&serverURL)
+	handler := GateHandler(TB, RP)
+
+	request := httptest.NewRequest("GET", "/", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	responseHeader := recorder.Header()
+	responseStatus := recorder.Code
+
+	if responseHeader.Get("Retry-After") != "" {
+		t.Errorf("expected nil header, got %v", responseHeader)
+	}
+
+	if responseStatus != http.StatusTooManyRequests {
+		t.Errorf("expected status: TooManyRequests, got %v", responseStatus)
 	}
 
 }
