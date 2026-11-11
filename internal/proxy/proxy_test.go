@@ -80,3 +80,84 @@ func TestGateHandler_BlockOnce(t *testing.T) {
 	}
 
 }
+
+func TestGateHandler_Allow(t *testing.T) {
+
+	handler := http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintln(w, "test message")
+		})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	URL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("failed to parse rpURL")
+	}
+
+	RP := NewReverseProxy(URL)
+	TB := algorithm.NewTokenBucket(1.0, 0, 1.0)
+	gateHandler := GateHandler(TB, RP)
+
+	request := httptest.NewRequest("GET", "/", nil)
+	recorder := httptest.NewRecorder()
+	gateHandler.ServeHTTP(recorder, request)
+
+	responseHeader := recorder.Header()
+	responseStatus := recorder.Code
+
+	if responseHeader.Get("Retry-After") != "" {
+		t.Errorf("expected nil header, got %v", responseHeader)
+	}
+
+	if responseStatus != http.StatusOK {
+		t.Errorf("expected status: OK, got %v", responseStatus)
+	}
+
+	b, err := io.ReadAll(recorder.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body")
+	}
+
+	responseString := string(b)
+
+	if responseString != "test message\n" {
+		t.Errorf("response body string mismatch: expected: %q, actual: %q", "test message\n", responseString)
+	}
+}
+
+func TestGateHandler_Retry(t *testing.T) {
+
+	handler := http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintln(w, "test message")
+		})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	URL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("failed to parse rpURL")
+	}
+
+	RP := NewReverseProxy(URL)
+	TB := algorithm.NewTokenBucket(1.0, 1.0, 0.0)
+	gateHandler := GateHandler(TB, RP)
+
+	request := httptest.NewRequest("GET", "/", nil)
+	recorder := httptest.NewRecorder()
+	gateHandler.ServeHTTP(recorder, request)
+
+	responseHeader := recorder.Header()
+	responseStatus := recorder.Code
+
+	if responseHeader.Get("Retry-After") != "1" {
+		t.Errorf("expected 1, got %v", responseHeader)
+	}
+
+	if responseStatus != http.StatusTooManyRequests {
+		t.Errorf("expected status: TooManyRequests, got %v", responseStatus)
+	}
+}
