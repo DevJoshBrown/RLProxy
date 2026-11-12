@@ -19,13 +19,14 @@ func NewReverseProxy(target *url.URL) *httputil.ReverseProxy {
 	return RP
 }
 
-func GateHandler(TB *algorithm.TokenBucket, RP *httputil.ReverseProxy) http.Handler {
+func GateHandler(TB *algorithm.TokenBucket, RP *httputil.ReverseProxy, Metrics *metrics) http.Handler {
 	handler := http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			result, retry := TB.Allow()
 
 			if result {
 				RP.ServeHTTP(w, r)
+				Metrics.requestsTotal.WithLabelValues("allowed").Inc()
 			} else {
 				if retry >= 0 {
 					seconds := math.Ceil(retry.Seconds())
@@ -34,6 +35,7 @@ func GateHandler(TB *algorithm.TokenBucket, RP *httputil.ReverseProxy) http.Hand
 					w.Header().Set("Retry-After", strsec)
 				}
 				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+				Metrics.requestsTotal.WithLabelValues("denied").Inc()
 			}
 		})
 	return handler
