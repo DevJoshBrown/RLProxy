@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/DevJoshBrown/RLProxy/internal/algorithm"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func TestReverseProxy(t *testing.T) {
@@ -62,7 +64,10 @@ func TestGateHandler_BlockOnce(t *testing.T) {
 
 	TB := algorithm.NewTokenBucket(0.0, 0.0, 0.0)
 	RP := NewReverseProxy(&serverURL)
-	handler := GateHandler(TB, RP)
+	reg := prometheus.NewRegistry()
+	Metrics := NewMetrics(reg)
+
+	handler := GateHandler(TB, RP, Metrics)
 
 	request := httptest.NewRequest("GET", "/", nil)
 	recorder := httptest.NewRecorder()
@@ -98,7 +103,10 @@ func TestGateHandler_Allow(t *testing.T) {
 
 	RP := NewReverseProxy(URL)
 	TB := algorithm.NewTokenBucket(1.0, 0, 1.0)
-	gateHandler := GateHandler(TB, RP)
+	reg := prometheus.NewRegistry()
+	Metrics := NewMetrics(reg)
+
+	gateHandler := GateHandler(TB, RP, Metrics)
 
 	request := httptest.NewRequest("GET", "/", nil)
 	recorder := httptest.NewRecorder()
@@ -125,6 +133,12 @@ func TestGateHandler_Allow(t *testing.T) {
 	if responseString != "test message\n" {
 		t.Errorf("response body string mismatch: expected: %q, actual: %q", "test message\n", responseString)
 	}
+
+	allowedCount := testutil.ToFloat64(Metrics.requestsTotal.WithLabelValues("allowed"))
+
+	if allowedCount != 1.0 {
+		t.Errorf("allowed request count mismatch: expected: 1, actual: %v", allowedCount)
+	}
 }
 
 func TestGateHandler_Retry(t *testing.T) {
@@ -144,7 +158,10 @@ func TestGateHandler_Retry(t *testing.T) {
 
 	RP := NewReverseProxy(URL)
 	TB := algorithm.NewTokenBucket(1.0, 1.0, 0.0)
-	gateHandler := GateHandler(TB, RP)
+	reg := prometheus.NewRegistry()
+	Metrics := NewMetrics(reg)
+
+	gateHandler := GateHandler(TB, RP, Metrics)
 
 	request := httptest.NewRequest("GET", "/", nil)
 	recorder := httptest.NewRecorder()
@@ -159,5 +176,11 @@ func TestGateHandler_Retry(t *testing.T) {
 
 	if responseStatus != http.StatusTooManyRequests {
 		t.Errorf("expected status: TooManyRequests, got %v", responseStatus)
+	}
+
+	deniedCount := testutil.ToFloat64(Metrics.requestsTotal.WithLabelValues("denied"))
+
+	if deniedCount != 1.0 {
+		t.Errorf("deniedCount mismatch: expected 1.0, actual %v", deniedCount)
 	}
 }

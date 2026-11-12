@@ -9,6 +9,8 @@ import (
 
 	"github.com/DevJoshBrown/RLProxy/internal/algorithm"
 	"github.com/DevJoshBrown/RLProxy/internal/proxy"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -33,11 +35,16 @@ func main() {
 	TB := algorithm.NewTokenBucket(1000, 25, 1000)
 	Proxy := proxy.NewReverseProxy(&upstreamURL)
 
-	gateHandler := proxy.GateHandler(TB, Proxy)
+	reg := prometheus.NewRegistry()
+	Metrics := proxy.NewMetrics(reg)
+
+	gateHandler := proxy.GateHandler(TB, Proxy, Metrics)
+	promHandler := promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", healthHandler)
 	mux.Handle("/", gateHandler)
+	mux.Handle("/metrics", promHandler)
 
 	proxyPort := os.Getenv("PROXYPORT")
 	if proxyPort == "" {
